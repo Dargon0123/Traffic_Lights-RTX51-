@@ -1,0 +1,4 @@
+"RTX_EX2.obj",
+"Conf_tny.obj" 
+TO "RTX_EX2" Rtx51Tiny 
+RAMSIZE(256) 

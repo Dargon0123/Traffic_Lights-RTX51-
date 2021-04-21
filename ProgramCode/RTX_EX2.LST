@@ -1,0 +1,641 @@
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE RTX_EX2
+OBJECT MODULE PLACED IN RTX_EX2.OBJ
+COMPILER INVOKED BY: E:\APP\Work\Keil5\C51\BIN\C51.EXE RTX_EX2.C OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          /******************************************************************************
+   2          @subject  :Traffic cross instruction
+   3          @designer :Dargon
+   4          @date     :2021/04/18
+   5          @version  :first
+   6          /******************************************************************************/
+   7          
+   8          /******************************************************************************/
+   9          /*                                                                            */
+  10          /*                     RTX_EX2.C:  A RTX-51 Application                       */
+  11          /*                                                                            */
+  12          /******************************************************************************/
+  13          #include <reg52.h>
+  14          #include <rtx51tny.h>                 /* RTX-51 tiny functions & defines      */
+  15          sbit led0 =P0^0;
+  16          sbit led1 =P0^1;
+  17          sbit led2 =P0^2;
+  18          
+  19          long counter0;                        /* counter for task 0                   */
+  20          long counter1;                        /* counter for task 1                   */
+  21          long counter2;                        /* counter for task 2                   */
+  22          long counter3;                        /* counter for task 2                   */
+  23          
+  24          #define uint unsigned int
+  25          #define uchar unsigned char
+  26          /*--------------------------------------
+  27          @ 函数测试：函数名声明区域
+  28          @ 函数说明：
+  29          --------------------------------------*/
+  30          void delay_ms(unsigned int n);
+  31          void delay(int z);
+  32          void display(int EW, int SN, int mode);
+  33          void matrix_key();
+  34          void init_timer();
+  35          void display_led();
+  36          void traffic_control();
+  37          void parameter_init();
+  38          
+  39          /*--------------------------------------
+  40          @ 函数测试：单片机接口定义区域
+  41          @ 函数说明：
+  42          --------------------------------------*/
+  43          sbit SN_LED_RED =P0^0;
+  44          sbit SN_LED_YEL =P0^1;
+  45          sbit SN_LED_GRE =P0^2;
+  46          
+  47          sbit EW_LED_RED =P0^3;
+  48          sbit EW_LED_YEL =P0^4;
+  49          sbit EW_LED_GRE =P0^5;
+  50          
+  51          sbit EW_WALK_LED_RED =P0^7;
+  52          sbit EW_WALK_LED_GRE =P0^6;
+  53          sbit SN_WALK_LED_RED =P3^4;
+  54          sbit SN_WALK_LED_GRE =P3^3;
+  55          
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 2   
+
+  56          sbit wei0 =P3^0;
+  57          sbit wei1 =P3^1;
+  58          sbit wei2 =P3^2;
+  59          
+  60          
+  61          /*--------------------------------------
+  62          @ 函数测试：全局变量声明区域
+  63          @ 函数说明：
+  64          --------------------------------------*/
+  65          char temp[]={0xfe,0xfd,0xfb,0xf7,0xef,0xdf,0xbf,0x7f,0xff};
+  66          /* 数码管共阴极 */
+  67          char tableCathnode[] ={0x3f,0x06,0x5b,0x4f,0x66,0x6d,0x7d,0x07,0x7f,0x6f,0x77,0x7c,0x39,0x5e,0x79,0x71}; 
+  68          /* 数码管共阳极 */
+  69          //char tableAnode[] ={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,0x88,0x83,0xc6,0xa1,0x86,0x8e };
+  70          /* 数码管 38译码器 位选数组 */
+  71          char wei[] ={0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
+  72          
+  73          unsigned char nums =0, count =0;
+  74          
+  75          int EW_LED_RealTime =0; /* 东西向数码管显示时间 15（通行）+ 3（黄灯） */
+  76          int SN_LED_RealTime =0; /* 南北向数码管显示时间 15（通行）+ 3（黄灯） */
+  77          
+  78          int EW_base_time =15; /* 基准时间 */
+  79          int SN_base_time =15;
+  80          int EW_set_pass_time =15; /* 默认通行时间 */
+  81          int SN_set_pass_time =15;
+  82          int key1_count =0; /* 记录key1 按键 按下次数 */
+  83          
+  84          int system_step_index =0; /* 系统基准步态 */
+  85          int Traffic_running_flag =1; /* 系统正常运行标志位 */
+  86          int Forbid_pass_flag =0; /* 禁止通行模式标志位 */
+  87          
+  88          int EW_LED_YEL_flag =0; /* 东西 黄灯显示 标志位 */
+  89          int SN_LED_YEL_flag =0; /* 南北 黄灯显示 标志位 */
+  90          //int EW_LED_GRE_flag =0; /* 东西 绿灯显示 标志位 */
+  91          //int SN_LED_GRE_flag =0; /* 南北 绿灯显示 标志位 */
+  92          //int EW_LED_RED_flag =0; /* 东西 红灯显示 标志位 */
+  93          //int SN_LED_RED_flag =0; /* 南北 红灯显示 标志位 */
+  94          
+  95          
+  96          
+  97          /******************************************************************************/
+  98          /*       Task 0 'job0':  RTX-51 tiny starts execution with task 0             */
+  99          /******************************************************************************/
+ 100          void job0 () _task_ 0  {                  
+ 101   1        os_create_task (1);                 /* start task 1                         */
+ 102   1        os_create_task (2);                 /* start task 2                         */
+ 103   1        os_create_task (3);                 /* start task 3                         */
+ 104   1        
+ 105   1        parameter_init(); /* system init */
+ 106   1        init_timer(); 
+ 107   1        
+ 108   1        os_delete_task (0);
+ 109   1      }
+ 110          
+ 111          /******************************************************************************/
+ 112          /*   Task 1 'job1':  RTX-51 tiny starts this task with os_create_task (1)     */
+ 113          /******************************************************************************/
+ 114          job1 () _task_ 1  {
+ 115   1        while (1)  {                        /* endless loop                         */
+ 116   2          counter1++;                       /* increment counter 1                  */
+ 117   2          matrix_key();
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 3   
+
+ 118   2          os_wait (K_TMO, 10, 0);           /* wait for timeout: 5 ticks 50ms          */
+ 119   2        }
+ 120   1      }
+ 121          
+ 122          /******************************************************************************/
+ 123          /*    Task 2 'job2':  RTX-51 tiny starts this task with os_create_task (2)    */
+ 124          /******************************************************************************/
+ 125          job2 () _task_ 2  {
+ 126   1        while (1)  {                        /* endless loop                         */
+ 127   2          counter2++;                       /* increment counter 2                  */
+ 128   2          if(Traffic_running_flag ==1) /* 50ms */
+ 129   2            traffic_control(); /* 基本显示 */
+ 130   2          else    
+ 131   2            display(EW_set_pass_time, SN_set_pass_time, 0);
+ 132   2        }
+ 133   1      }
+ 134          
+ 135          /******************************************************************************/
+ 136          /*    Task 3 'job3':  RTX-51 tiny starts this task with os_create_task (3)    */
+ 137          /******************************************************************************/
+ 138          job3 () _task_ 3  {
+ 139   1        while (1)  { 
+ 140   2          /* interrept service */
+ 141   2          count ++; 
+ 142   2          if(count ==20) 
+ 143   2          {
+ 144   3            display_led();
+ 145   3            count =0;
+ 146   3            EW_base_time --;
+ 147   3            SN_base_time --;
+ 148   3            if(EW_base_time <0)
+ 149   3              EW_base_time =EW_set_pass_time;
+ 150   3            if(SN_base_time <0)
+ 151   3              SN_base_time =SN_set_pass_time;
+ 152   3          }   
+ 153   2        /* endless loop                         */
+ 154   2          os_wait (K_SIG, 0, 0);            /* wait for signal                      */
+ 155   2          counter3++;                       /* process overflow from counter 2      */
+ 156   2        }
+ 157   1      }
+ 158          
+ 159          
+ 160          /******************************************************************************/
+ 161          /*    下面是由 状态机 循环的思路实现 交通灯内容 进行移植   */
+ 162          /******************************************************************************/
+ 163          /******************************************************************************/
+ 164          /*    下面是由 状态机 循环的思路实现 交通灯内容 进行移植   */
+ 165          /******************************************************************************/
+ 166          /*--------------------------------------
+ 167          @ 函数测试：简单 1ms 时延
+ 168          @ 函数说明：
+ 169          --------------------------------------*/
+ 170          
+ 171          /*--------------------------------------
+ 172          @ 函数测试：普通时延 1ms
+ 173          @ 函数说明：
+ 174          --------------------------------------*/
+ 175          void delay_ms(unsigned int n) 
+ 176          {
+ 177   1        unsigned int i =0, j =0;
+ 178   1        for(i =0; i <n; i++)
+ 179   1        {
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 4   
+
+ 180   2          for(j =0; j <120; j++);
+ 181   2        }
+ 182   1      }
+ 183          /*--------------------------------------
+ 184          @ 函数测试：数码管显示
+ 185          @ 函数说明：mode 0: 设置模式 1：运行模式 2：夜间模式
+ 186          --------------------------------------*/
+ 187          void display(int EW, int SN, int mode) 
+ 188          {
+ 189   1        //P3 =wei[2]; /* display ge  */
+ 190   1        wei0 =0;
+ 191   1        wei1 =1;
+ 192   1        wei2 =0;
+ 193   1        P2 =tableCathnode[EW/10];
+ 194   1        delay_ms(5);
+ 195   1        //P2 =0x00;
+ 196   1        
+ 197   1        //P3 =wei[3]; /* display shi  */
+ 198   1        wei0 =1;
+ 199   1        wei1 =1;
+ 200   1        wei2 =0;
+ 201   1        P2 =tableCathnode[EW%10];
+ 202   1        delay_ms(5);
+ 203   1        //P2 =0x00;
+ 204   1        
+ 205   1        //P3 =wei[0]; /* display ge  */
+ 206   1        wei0 =0;
+ 207   1        wei1 =0;
+ 208   1        wei2 =0;
+ 209   1        P2 =tableCathnode[SN/10];
+ 210   1        delay_ms(5);
+ 211   1        //P2 =0x00;
+ 212   1        
+ 213   1        //P3 =wei[1]; /* display shi  */
+ 214   1        wei0 =1;
+ 215   1        wei1 =0;
+ 216   1        wei2 =0;
+ 217   1        P2 =tableCathnode[SN%10];
+ 218   1        delay_ms(5);
+ 219   1        //P2 =0x00;
+ 220   1        
+ 221   1        //P3 =wei[4]; /* SET_H  */
+ 222   1        wei0 =0;
+ 223   1        wei1 =0;
+ 224   1        wei2 =1;
+ 225   1        P2 =tableCathnode[mode/10];
+ 226   1        delay_ms(5);
+ 227   1        //os_wait (K_TMO, 1, 0);
+ 228   1        //P2 =0x00;
+ 229   1        
+ 230   1        //P3 =wei[5]; /* SET_L  */
+ 231   1        wei0 =1;
+ 232   1        wei1 =0;
+ 233   1        wei2 =1;
+ 234   1        P2 =tableCathnode[mode%10];
+ 235   1        delay_ms(5);
+ 236   1        //P2 =0x00;
+ 237   1      }
+ 238          /*--------------------------------------
+ 239          @ 函数测试：普通按键
+ 240          @ 函数说明：
+ 241          --------------------------------------*/
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 5   
+
+ 242          
+ 243          /*--------------------------------------
+ 244          @ 函数测试：矩阵按键
+ 245          @ 函数说明：
+ 246          (0 0): 1下 进入设置模式 东西调整 2下 南北调整 3下 正常运行模式
+ 247          (0 1): 加操作
+ 248          (0 2): 减操作
+ 249          --------------------------------------*/
+ 250          void matrix_key()
+ 251          {
+ 252   1        unsigned char rowVal =0, colVal =0, keyVal =0;
+ 253   1        P1 =0xf0;
+ 254   1        if(P1 !=0xf0)
+ 255   1        {
+ 256   2          //delay_ms(10);
+ 257   2          rowVal =P1;
+ 258   2          P1 =0x0f;
+ 259   2          if(P1 !=0x0f)
+ 260   2          {
+ 261   3            colVal =P1;
+ 262   3          }
+ 263   2          keyVal =rowVal +colVal;   
+ 264   2        }
+ 265   1        
+ 266   1        /* 处理按键结果 */
+ 267   1        /* 第一行 0xe~ */
+ 268   1        if(keyVal ==0xee && key1_count ==0) /* 设置模式 设置东西道路通行时间 */
+ 269   1        {
+ 270   2          nums =0;
+ 271   2          key1_count ++;
+ 272   2          EW_set_pass_time ++;
+ 273   2          Traffic_running_flag =0; /* 进入设置模式 */
+ 274   2          
+ 275   2          while(P1 !=0x0f);
+ 276   2        }
+ 277   1        else if(keyVal ==0xee && key1_count ==1) /* 设置模式 设置南北道路通行时间 */
+ 278   1        {
+ 279   2          nums =0;
+ 280   2          key1_count ++;
+ 281   2          while(P1 !=0x0f);
+ 282   2        }
+ 283   1        else if(keyVal ==0xee && key1_count ==2) /* 设置模式 恢复正常 */
+ 284   1        {
+ 285   2          nums =0;
+ 286   2          key1_count =0;
+ 287   2          Traffic_running_flag =1; /* 系统复位 */
+ 288   2          parameter_init(); /* restart traffic system */
+ 289   2          while(P1 !=0x0f);
+ 290   2        }
+ 291   1        else if(keyVal ==0xed) /* 加键 */
+ 292   1        {
+ 293   2          /* to do sth */
+ 294   2          nums--;
+ 295   2          if(key1_count ==1) /* 东西 */
+ 296   2            EW_set_pass_time ++;
+ 297   2          else if(key1_count ==2) /* 南北 */
+ 298   2            SN_set_pass_time ++;
+ 299   2          while(P1 !=0x0f);
+ 300   2        }
+ 301   1        else if(keyVal ==0xeb) /* 减键 */
+ 302   1        {
+ 303   2          /* to do sth */
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 6   
+
+ 304   2          nums +=2;
+ 305   2          if(key1_count ==1) /* 东西 */
+ 306   2            EW_set_pass_time --;
+ 307   2          else if(key1_count ==2) /* 南北 */
+ 308   2            SN_set_pass_time --;
+ 309   2          while(P1 !=0x0f);
+ 310   2        }
+ 311   1        else if(keyVal ==0xe7) /* 夜间模式 */
+ 312   1        {
+ 313   2          /* to do sth */
+ 314   2          nums -=2;
+ 315   2          while(P1 !=0x0f);
+ 316   2        }
+ 317   1        /* 第二行0xd~ */
+ 318   1        else if(keyVal ==0xde && Forbid_pass_flag ==0) /* 禁止通行模式 */
+ 319   1        {
+ 320   2          /* to do sth */
+ 321   2          Forbid_pass_flag =1;
+ 322   2          while(P1 !=0x0f);
+ 323   2        }
+ 324   1        else if(keyVal ==0xde && Forbid_pass_flag ==1) /* 禁止通行模式 */
+ 325   1        {
+ 326   2          /* to do sth */
+ 327   2          Forbid_pass_flag =0;
+ 328   2          while(P1 !=0x0f);
+ 329   2        }
+ 330   1        /* 第三行0xb~ */
+ 331   1        else if(keyVal ==0xbe)
+ 332   1        {
+ 333   2          /* to do sth */
+ 334   2          nums =14;
+ 335   2          while(P1 !=0x0f);
+ 336   2        }
+ 337   1        /* 第四行0x7~ */
+ 338   1        else if(keyVal ==0x7e)
+ 339   1        {
+ 340   2          /* to do sth */
+ 341   2          nums =13;
+ 342   2          while(P1 !=0x0f);
+ 343   2        }
+ 344   1        
+ 345   1      //  if(Traffic_running_flag ==0)
+ 346   1      //  {
+ 347   1      //    display(EW_set_pass_time, SN_set_pass_time, 0);
+ 348   1      //  }
+ 349   1      //  if(nums >15)
+ 350   1      //    nums =0;
+ 351   1        
+ 352   1        
+ 353   1          
+ 354   1      }
+ 355          
+ 356          /*--------------------------------------
+ 357          @ 函数测试：定时器初始化 T0 and T1
+ 358          @ 函数说明：
+ 359          --------------------------------------*/
+ 360          void init_timer() 
+ 361          {
+ 362   1        TMOD =0x11; /* hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh !!!!!!!!!!!!!!!!!!!! */
+ 363   1        //TH0 =(65536-50000)/256; /* 50ms 初值配置 */
+ 364   1        //TL0 =(65536-50000)%256;
+ 365   1        TH1 =(65536-50000)/256; /* 50ms 初值配置 */
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 7   
+
+ 366   1        TH1 =(65536-50000)%256;
+ 367   1        EA =1; 
+ 368   1        ET1 =1; 
+ 369   1        TR1 =1; 
+ 370   1      }
+ 371          
+ 372          /*--------------------------------------
+ 373          @ 函数测试：定时器中断处理内容
+ 374          @ 函数说明：
+ 375          --------------------------------------*/
+ 376          
+ 377          void T1_time() interrupt 3
+ 378          {
+ 379   1        
+ 380   1        TH1 =(65536-50000)/256; /* 50ms 初值配置 */
+ 381   1        TH1 =(65536-50000)%256;
+ 382   1        isr_send_signal(3); /* 中断服务函数 创建 task3 处理 */
+ 383   1      //  count ++;
+ 384   1      //  if(count ==20) 
+ 385   1      //  {
+ 386   1      //    display_led();
+ 387   1      //    count =0;
+ 388   1      //    EW_base_time --;
+ 389   1      //    SN_base_time --;
+ 390   1      //    if(EW_base_time <0)
+ 391   1      //      EW_base_time =EW_set_pass_time;
+ 392   1      //    if(SN_base_time <0)
+ 393   1      //      SN_base_time =SN_set_pass_time;
+ 394   1      //  }
+ 395   1      }
+ 396          
+ 397          /*--------------------------------------
+ 398          @ 函数测试：LED显示控制
+ 399          @ 函数说明：
+ 400          --------------------------------------*/
+ 401          void display_led()
+ 402          {
+ 403   1        if(Forbid_pass_flag ==0)
+ 404   1        {
+ 405   2          switch(system_step_index) 
+ 406   2          {
+ 407   3            case 0: /* 状态0 东西向绿灯 南北向红灯 */
+ 408   3            {
+ 409   4              /* drive */
+ 410   4              //SN_LED_RED =1;
+ 411   4              SN_LED_YEL =1;
+ 412   4              SN_LED_GRE =1;
+ 413   4              
+ 414   4              EW_LED_RED =1;
+ 415   4              EW_LED_YEL =1;
+ 416   4              //EW_LED_GRE =1;
+ 417   4              
+ 418   4              EW_LED_GRE =~EW_LED_GRE; /* green */
+ 419   4              SN_LED_RED =~SN_LED_RED;
+ 420   4              
+ 421   4              /* walk */
+ 422   4              EW_WALK_LED_RED =1;
+ 423   4              SN_WALK_LED_GRE =1;
+ 424   4              
+ 425   4              EW_WALK_LED_GRE =~EW_WALK_LED_GRE;
+ 426   4              SN_WALK_LED_RED =~SN_WALK_LED_RED;
+ 427   4              break;
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 8   
+
+ 428   4            }
+ 429   3            case 1: /* 状态1 东西向黄灯 南北向红灯 */
+ 430   3            {
+ 431   4              //SN_LED_RED =1;
+ 432   4              SN_LED_YEL =1;
+ 433   4              SN_LED_GRE =1;
+ 434   4              
+ 435   4              EW_LED_RED =1;
+ 436   4              //EW_LED_YEL =1;
+ 437   4              EW_LED_GRE =1;
+ 438   4              
+ 439   4              EW_LED_YEL =~EW_LED_YEL; /* yellow */
+ 440   4              SN_LED_RED =~SN_LED_RED;
+ 441   4              
+ 442   4              /* walk */
+ 443   4              EW_WALK_LED_RED =1;
+ 444   4              SN_WALK_LED_GRE =1;
+ 445   4              
+ 446   4              EW_WALK_LED_GRE =~EW_WALK_LED_GRE;
+ 447   4              SN_WALK_LED_RED =~SN_WALK_LED_RED;
+ 448   4              break;
+ 449   4            }
+ 450   3            case 2: /* 状态2 东西向红灯 南北向绿灯 */
+ 451   3            {
+ 452   4              SN_LED_RED =1;
+ 453   4              SN_LED_YEL =1;
+ 454   4              //SN_LED_GRE =1;
+ 455   4              
+ 456   4              //EW_LED_RED =1;
+ 457   4              EW_LED_YEL =1;
+ 458   4              EW_LED_GRE =1;
+ 459   4              
+ 460   4              EW_LED_RED =~EW_LED_RED; 
+ 461   4              SN_LED_GRE =~SN_LED_GRE; /* green */
+ 462   4              
+ 463   4              /* walk */
+ 464   4              SN_WALK_LED_RED =1;
+ 465   4              EW_WALK_LED_GRE =1;
+ 466   4              
+ 467   4              SN_WALK_LED_GRE =~SN_WALK_LED_GRE;
+ 468   4              EW_WALK_LED_RED =~EW_WALK_LED_RED;
+ 469   4              break;
+ 470   4            }
+ 471   3            case 3: /* 状态3 东西向红灯 南北向黄灯 */
+ 472   3            {
+ 473   4              SN_LED_RED =1;
+ 474   4              //SN_LED_YEL =1;
+ 475   4              SN_LED_GRE =1;
+ 476   4              
+ 477   4              //EW_LED_RED =1;
+ 478   4              EW_LED_YEL =1;
+ 479   4              EW_LED_GRE =1;
+ 480   4              
+ 481   4              EW_LED_RED =~EW_LED_RED;
+ 482   4              SN_LED_YEL =~SN_LED_YEL; /* yellow */
+ 483   4              
+ 484   4              /* walk */
+ 485   4              SN_WALK_LED_RED =1;
+ 486   4              EW_WALK_LED_GRE =1;
+ 487   4              
+ 488   4              SN_WALK_LED_GRE =~SN_WALK_LED_GRE;
+ 489   4              EW_WALK_LED_RED =~EW_WALK_LED_RED;
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 9   
+
+ 490   4              break;
+ 491   4            }
+ 492   3            default :
+ 493   3              break;
+ 494   3          }
+ 495   2        }
+ 496   1        else  /* 禁止模式 红灯闪烁 绿灯全灭 */
+ 497   1        {   
+ 498   2          EW_LED_GRE =1;
+ 499   2          SN_LED_GRE =1;
+ 500   2          EW_LED_RED =~EW_LED_RED; 
+ 501   2          SN_LED_RED =~SN_LED_RED;      
+ 502   2          /* walk */  
+ 503   2          SN_WALK_LED_GRE =1;
+ 504   2          EW_WALK_LED_GRE =1;
+ 505   2          SN_WALK_LED_RED =~SN_WALK_LED_RED;
+ 506   2          EW_WALK_LED_RED =~EW_WALK_LED_RED;
+ 507   2        }
+ 508   1      }
+ 509          /*--------------------------------------
+ 510          @ 函数测试：交通控制
+ 511          @ 函数说明：
+ 512          --------------------------------------*/
+ 513          void traffic_control()
+ 514          {
+ 515   1        EW_LED_RealTime =EW_base_time;
+ 516   1        SN_LED_RealTime =SN_base_time;
+ 517   1        if(Forbid_pass_flag ==0)
+ 518   1        {
+ 519   2          switch(system_step_index)
+ 520   2          {
+ 521   3            case 0: /* 状态0 东西向绿灯 南北向红灯 */
+ 522   3            {
+ 523   4              if(SN_LED_RealTime <=3)
+ 524   4              {
+ 525   5                SN_LED_YEL_flag =1;
+ 526   5                system_step_index =1;
+ 527   5              }
+ 528   4              display(EW_LED_RealTime-3, SN_LED_RealTime, 1);
+ 529   4              break;
+ 530   4            }
+ 531   3            case 1: /* 状态1 东西向黄灯 南北向红灯 */
+ 532   3            {
+ 533   4              if(SN_LED_RealTime >3)
+ 534   4              {
+ 535   5                SN_LED_YEL_flag =0;
+ 536   5                system_step_index =2;
+ 537   5              }
+ 538   4              display(EW_LED_RealTime, SN_LED_RealTime, 1);
+ 539   4              break;
+ 540   4            }
+ 541   3            case 2: /* 状态2 东西向红灯 南北向绿灯 */
+ 542   3            {
+ 543   4              if(EW_LED_RealTime <=3)
+ 544   4              {
+ 545   5                EW_LED_YEL_flag =1;
+ 546   5                system_step_index =3;
+ 547   5              }
+ 548   4              display(EW_LED_RealTime, SN_LED_RealTime-3, 1);
+ 549   4              break;
+ 550   4            }
+ 551   3            case 3: /* 状态1 东西向红灯 南北向黄灯 */
+C51 COMPILER V9.56.0.0   RTX_EX2                                                           04/18/2021 21:23:36 PAGE 10  
+
+ 552   3            {
+ 553   4              if(EW_LED_RealTime >3)
+ 554   4              {
+ 555   5                EW_LED_YEL_flag =0;
+ 556   5                system_step_index =0;
+ 557   5              }
+ 558   4              display(EW_LED_RealTime, SN_LED_RealTime, 1);
+ 559   4              break;
+ 560   4            }
+ 561   3            default:
+ 562   3              break;
+ 563   3          }
+ 564   2        }
+ 565   1        else 
+ 566   1        {
+ 567   2          display(0, 0, 1);
+ 568   2        }
+ 569   1      }
+ 570          /*--------------------------------------
+ 571          @ 函数测试：外部数据接口初始化
+ 572          @ 函数说明：
+ 573          --------------------------------------*/
+ 574          void parameter_init()
+ 575          {
+ 576   1        EW_base_time =EW_set_pass_time;
+ 577   1        SN_base_time =SN_set_pass_time;
+ 578   1      }
+ 579          /*--------------------------------------
+ 580          @ 函数测试：主程序函数
+ 581          @ 函数说明：
+ 582          --------------------------------------*/
+ 583          //void main()
+ 584          //{
+ 585          //  parameter_init();
+ 586          //  init_timer();
+ 587          //  while(1) 
+ 588          //  {
+ 589          //    matrix_key();
+ 590          //    if(Traffic_running_flag ==1)
+ 591          //      traffic_control();
+ 592          //  }
+ 593          //  return;
+ 594          //  
+ 595          //}
+ 596          
+ 597          
+ 598          
+ 599          
+ 600          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1168    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     75       7
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

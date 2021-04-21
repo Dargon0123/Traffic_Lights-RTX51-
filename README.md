@@ -5,6 +5,7 @@
 The file "hardware" is a electronic design about 51 and some electronic components to acheive a simple control system whose control core is ST89C51.
 
 ## ProgramCode
+* The main C lanuage file is RTX_EX2.C, you only need to read this file to know this, the other file is configure files and head files
 * The file "ProgramCode" is the code use C lanuage to code that to control the hardware to achieve the control performance.
 
 ## Running request
